@@ -8,7 +8,11 @@ import edge_tts
 from pydub import AudioSegment
 from PIL import Image, ImageDraw, ImageFont
 
+# 曉曼粵語 Neural 語音
 VOICE = 'zh-HK-HiuMaanNeural'
+
+# ⚡ 語速控制：'+30%' 黃金節奏 (既有廣播劇質感，視覺又唔會覺得慢)
+SPEECH_RATE = '+30%'
 
 TAG_AUDIO_MAP = {
     '[雷雨]': 'thunder.mp3', '[雷聲]': 'thunder.mp3', '[雨聲雷鳴]': 'thunder.mp3',
@@ -39,7 +43,7 @@ def download_chinese_font():
     return font_path if os.path.exists(font_path) else None
 
 def draw_static_frame(img_path, title_text, subtitle_phrase):
-    """生成穩定高清靜態畫面，絕不閃爍縮放"""
+    """生成穩定高清靜態畫面，絕不閃爍"""
     try:
         font_file = download_chinese_font()
         img = Image.open(img_path).convert("RGBA")
@@ -83,7 +87,8 @@ async def generate_tts(text, output_mp3):
     if not clean_text: return False
     for attempt in range(8):
         try:
-            communicate = edge_tts.Communicate(clean_text, VOICE, rate='-20%')
+            # 採用 +30% 語速生成語音
+            communicate = edge_tts.Communicate(clean_text, VOICE, rate=SPEECH_RATE)
             await communicate.save(output_mp3)
             if os.path.exists(output_mp3) and os.path.getsize(output_mp3) > 1000:
                 return True
@@ -92,7 +97,6 @@ async def generate_tts(text, output_mp3):
     return False
 
 def process_script_and_audio(text_file, output_audio_filename):
-    """精準分析聲音時間，音效與 BGM 皆由頭連貫播到尾"""
     with open(text_file, 'r', encoding='utf-8') as f:
         content = f.read()
 
@@ -104,7 +108,7 @@ def process_script_and_audio(text_file, output_audio_filename):
     img_idx = 0
     combined_voice = AudioSegment.silent(duration=0)
     
-    print("🔊 正在精準分析曉曼語音，並設定音效長播連貫...")
+    print(f"🔊 正在以 +30% 語速 ({SPEECH_RATE}) 精準分析曉曼語音與停頓...")
     created_temp_files = []
 
     for section in raw_sections:
@@ -124,7 +128,6 @@ def process_script_and_audio(text_file, output_audio_filename):
             
             if not line: continue
             
-            # 抓取第一個出現的大自然音效標籤，作全程連貫播放
             if line in TAG_AUDIO_MAP:
                 if not first_sfx_tag:
                     first_sfx_tag = line
@@ -140,8 +143,9 @@ def process_script_and_audio(text_file, output_audio_filename):
                 
                 if success and os.path.exists(temp_f):
                     raw_audio = AudioSegment.from_file(temp_f)
-                    dur_ms = len(raw_audio) + 1000
-                    combined_voice += raw_audio + AudioSegment.silent(duration=1000)
+                    # 適中停頓 (700ms)，保持氣氛又不拖沓
+                    dur_ms = len(raw_audio) + 700
+                    combined_voice += raw_audio + AudioSegment.silent(duration=700)
                     script_data.append({
                         'img_idx': max(img_idx, 1),
                         'phrase': p,
@@ -154,7 +158,7 @@ def process_script_and_audio(text_file, output_audio_filename):
     total_duration = len(combined_voice)
     if total_duration == 0: return False, []
 
-    # 1. BGM 連續長播
+    # BGM 連續長播
     bgm_filename = MUSIC_MAP.get(current_bgm, 'music_calm.mp3')
     if os.path.exists(bgm_filename):
         raw_bgm = AudioSegment.from_file(bgm_filename)
@@ -163,7 +167,7 @@ def process_script_and_audio(text_file, output_audio_filename):
     else:
         combined_bgm = AudioSegment.silent(duration=total_duration)
 
-    # 2. SFX 大自然音效全程連續長播（絕不每句中斷！）
+    # SFX 大自然音效全程連續長播（絕不中斷）
     if first_sfx_tag and first_sfx_tag in TAG_AUDIO_MAP and os.path.exists(TAG_AUDIO_MAP[first_sfx_tag]):
         snd = AudioSegment.from_file(TAG_AUDIO_MAP[first_sfx_tag]) - 20
         combined_sfx = (snd * (int(total_duration / len(snd)) + 2))[:total_duration]
@@ -172,11 +176,10 @@ def process_script_and_audio(text_file, output_audio_filename):
 
     final_mix = combined_bgm.overlay(combined_sfx).overlay(combined_voice, position=1000)
     final_mix.export(output_audio_filename, format="mp3")
-    print(f"🎉 聲音完全連貫合成完成: {output_audio_filename}")
+    print(f"🎉 +30% 語速廣播劇合成完成: {output_audio_filename}")
     return True, script_data
 
 def generate_multi_image_mp4(audio_file, video_output, script_data):
-    """壓製乾淨純靜態畫面 + 1:1 同步字幕影片"""
     try:
         try:
             from moviepy import AudioFileClip, ImageClip, concatenate_videoclips
@@ -187,7 +190,7 @@ def generate_multi_image_mp4(audio_file, video_output, script_data):
         title_text = "創世記 第一章"
         all_clips = []
         
-        print("🎬 正在壓製【純靜態乾淨畫面 + 完全連貫音效】影片...")
+        print("🎬 正在壓製 +30% 語速字幕精準對齊影片...")
 
         for item in script_data:
             img_num = item['img_idx']
@@ -212,7 +215,7 @@ def generate_multi_image_mp4(audio_file, video_output, script_data):
         except AttributeError: final_video = final_video.set_audio(audio_clip)
 
         final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
-        print(f"✅ 成功生成完美乾淨版廣播劇影片: {video_output}")
+        print(f"✅ 成功生成 +30% 語速廣播劇影片: {video_output}")
 
         audio_clip.close()
         final_video.close()
