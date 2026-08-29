@@ -2,3 +2,5 @@ edge-tts
 pydub
 Pillow
 moviepy
+decorator
+
