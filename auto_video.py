@@ -38,8 +38,8 @@ def download_chinese_font():
             print(f"⚠️ 字型下載失敗: {e}")
     return font_path if os.path.exists(font_path) else None
 
-def add_elements_to_image(img_path, title_text, subtitle_text):
-    """加 1.左上角招牌 + 2.頂部六字標題 + 3.底部字幕"""
+def add_brand_and_subtitle(img_path, title_text, subtitle_text):
+    """左上角雙行黑底框（招牌+標題） + 底部真實廣東話台詞字幕"""
     try:
         font_file = download_chinese_font()
         img = Image.open(img_path).convert("RGBA")
@@ -50,40 +50,35 @@ def add_elements_to_image(img_path, title_text, subtitle_text):
         
         margin = int(height * 0.02)
         
-        # 1. 左上角招牌底塊
-        box_w, box_h = int(width * 0.28), int(height * 0.06)
-        draw_overlay.rounded_rectangle([(margin, margin), (margin + box_w, margin + box_h)], radius=10, fill=(0, 0, 0, 160))
-        
-        # 2. 正上方六字標題底塊 (例如：創世記 第一章)
-        if title_text:
-            title_w, title_h = int(width * 0.35), int(height * 0.07)
-            title_x = (width - title_w) / 2
-            draw_overlay.rounded_rectangle([(title_x, margin), (title_x + title_w, margin + title_h)], radius=10, fill=(0, 0, 0, 160))
+        # 1. 左上角雙行合併黑底框
+        box_w = int(width * 0.32)
+        box_h = int(height * 0.12)
+        draw_overlay.rounded_rectangle([(margin, margin), (margin + box_w, margin + box_h)], radius=12, fill=(0, 0, 0, 170))
 
-        # 3. 底部字幕黑透底條
+        # 2. 底部字幕黑透底條
         if subtitle_text:
             sub_h = int(height * 0.12)
-            draw_overlay.rectangle([(0, height - sub_h), (width, height)], fill=(0, 0, 0, 180))
+            draw_overlay.rectangle([(0, height - sub_h), (width, height)], fill=(0, 0, 0, 185))
 
         img = Image.alpha_composite(img, overlay).convert("RGB")
         draw = ImageDraw.Draw(img)
 
         # 字型設定
-        font_brand = ImageFont.truetype(font_file, int(height * 0.03)) if font_file else ImageFont.load_default()
+        font_brand = ImageFont.truetype(font_file, int(height * 0.032)) if font_file else ImageFont.load_default()
         font_title = ImageFont.truetype(font_file, int(height * 0.038)) if font_file else ImageFont.load_default()
         font_sub = ImageFont.truetype(font_file, int(height * 0.042)) if font_file else ImageFont.load_default()
 
-        # 繪製文字
-        # 1. 招牌字
-        draw.text((margin + (box_w / 2), margin + (box_h / 2)), "★ 廣東話聖經劇場 ★", font=font_brand, fill=(255, 215, 0), anchor="mm")
-        
-        # 2. 六字標題
-        if title_text:
-            draw.text((width / 2, margin + (int(height * 0.07) / 2)), title_text, font=font_title, fill=(255, 255, 255), anchor="mm")
+        # 繪製左上角雙行文字（置中對齊）
+        center_x = margin + (box_w / 2)
+        draw.text((center_x, margin + (box_h * 0.28)), "★ 廣東話聖經劇場 ★", font=font_brand, fill=(255, 215, 0), anchor="mm")
+        draw.text((center_x, margin + (box_h * 0.72)), title_text, font=font_title, fill=(255, 255, 255), anchor="mm")
             
-        # 3. 字幕
+        # 繪製真實廣東話字幕
         if subtitle_text:
             clean_sub = re.sub(r'\[.*?\]', '', subtitle_text).strip()
+            # 太長自動截斷加省略號，確保不超出畫面
+            if len(clean_sub) > 30:
+                clean_sub = clean_sub[:28] + "……"
             draw.text((width / 2, height - (int(height * 0.12) / 2)), clean_sub, font=font_sub, fill=(255, 255, 255), anchor="mm")
 
         out_img = f"framed_{os.path.basename(img_path)}"
@@ -153,7 +148,7 @@ def mix_chapter_audio(text_file, output_audio_filename):
     total_duration = len(combined_voice)
     if total_duration == 0: return False
 
-    # 1. 不間斷 BGM (最高權重，由頭播到尾)
+    # 1. 不間斷 BGM (最高權重)
     first_bgm_type = segment_durations[0][2] if segment_durations else 'calm'
     bgm_filename = MUSIC_MAP.get(first_bgm_type, 'music_calm.mp3')
     if os.path.exists(bgm_filename):
@@ -186,26 +181,35 @@ def generate_multi_image_mp4(audio_file, video_output, text_file="video.txt"):
         audio_clip = AudioFileClip(audio_file)
         total_duration = audio_clip.duration
 
-        # 六字標題精準設為：創世記 第一章
         title_text = "創世記 第一章"
 
         with open(text_file, 'r', encoding='utf-8') as f:
             content = f.read()
+
+        # 解析每一幕對應嘅文本台詞（作字幕用）
+        img_blocks = re.split(r'\[IMG\s*:\s*.*?\]', content)
+        subtitles_list = []
+        for blk in img_blocks[1:]:
+            clean_lines = [re.sub(r'\[.*?\]', '', line).strip() for line in blk.split('\n') if line.strip()]
+            subtitles_list.append(" ".join(clean_lines))
 
         img_tags = re.findall(r'\[IMG\s*:\s*(.*?)\]', content, re.IGNORECASE)
         num_images = len(img_tags) if img_tags else 7
         dur_per_img = total_duration / num_images
 
         clips = []
-        print(f"🎬 正在壓製【招牌 + 六字標題 + 廣東話字幕】影片...")
+        print(f"🎬 正在壓製【合併左上角框 + 廣東話字幕】影片...")
 
         for idx in range(1, num_images + 1):
             base_img = f"{idx}.png"
             if not os.path.exists(base_img): base_img = f"pic{idx}.png"
             if not os.path.exists(base_img): base_img = '1.png' if os.path.exists('1.png') else 'cover.png'
 
-            # 繪製：1.招牌 + 2.六字標題 + 3.字幕
-            framed_img = add_elements_to_image(base_img, title_text, f"第 {idx} 幕 • 廣東話聖經朗讀")
+            # 抓取該幕對應嘅台詞
+            sub_text = subtitles_list[idx-1] if (idx-1) < len(subtitles_list) else ""
+
+            # 繪製：1.左上角雙行黑底框 + 2.正宗廣東話台詞字幕
+            framed_img = add_brand_and_subtitle(base_img, title_text, sub_text)
 
             try:
                 img_clip = ImageClip(framed_img).with_duration(dur_per_img)
@@ -225,7 +229,7 @@ def generate_multi_image_mp4(audio_file, video_output, text_file="video.txt"):
         except AttributeError: final_video = final_video.set_audio(audio_clip)
 
         final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
-        print(f"✅ 成功生成完美字幕影片: {video_output}")
+        print(f"✅ 成功生成精美廣東話字幕影片: {video_output}")
 
         audio_clip.close()
         final_video.close()
