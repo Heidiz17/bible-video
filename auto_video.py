@@ -143,9 +143,13 @@ def mix_chapter_audio(text_file, output_audio_filename):
     return True
 
 def generate_multi_image_mp4(audio_file, video_output, text_file="video.txt"):
-    """智能自動辨識 1.png 到 7.png 或 pic1.png 做動畫"""
+    """自動相容 MoviePy 1.x 與 2.0+ 最新語法"""
     try:
-        from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
+        # 新舊版 MoviePy 雙重相容匯入
+        try:
+            from moviepy import AudioFileClip, ImageClip, concatenate_videoclips
+        except ImportError:
+            from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
 
         audio_clip = AudioFileClip(audio_file)
         total_duration = audio_clip.duration
@@ -160,7 +164,6 @@ def generate_multi_image_mp4(audio_file, video_output, text_file="video.txt"):
         clips = []
         print(f"🎬 正在壓製多圖慢推動畫 MP4 (共 {num_images} 張相片)...")
         for idx in range(1, num_images + 1):
-            # 優先搜尋 1.png，找不到再找 pic1.png
             img_path = f"{idx}.png"
             if not os.path.exists(img_path):
                 img_path = f"pic{idx}.png"
@@ -168,16 +171,24 @@ def generate_multi_image_mp4(audio_file, video_output, text_file="video.txt"):
                 img_path = '1.png' if os.path.exists('1.png') else 'cover.png'
 
             print(f"📸 第 {idx} 幕使用相片: {img_path}")
-            img_clip = ImageClip(img_path).set_duration(dur_per_img)
-            img_clip = img_clip.resize(lambda t: 1 + 0.05 * (t / dur_per_img))
-
-            if idx > 1:
-                img_clip = img_clip.crossfadein(1.0)
+            
+            # 支援 MoviePy 1.x 與 2.0+ 動畫
+            try:
+                img_clip = ImageClip(img_path).with_duration(dur_per_img)
+                img_clip = img_clip.resized(lambda t: 1 + 0.05 * (t / dur_per_img))
+            except AttributeError:
+                img_clip = ImageClip(img_path).set_duration(dur_per_img)
+                img_clip = img_clip.resize(lambda t: 1 + 0.05 * (t / dur_per_img))
 
             clips.append(img_clip)
 
         final_video = concatenate_videoclips(clips, method="compose")
-        final_video = final_video.set_audio(audio_clip)
+        
+        # 綁定音訊
+        try:
+            final_video = final_video.with_audio(audio_clip)
+        except AttributeError:
+            final_video = final_video.set_audio(audio_clip)
 
         final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
         print(f"✅ 成功生成廣東話動畫影片: {video_output}")
