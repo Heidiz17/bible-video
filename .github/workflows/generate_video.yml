@@ -11,10 +11,10 @@ jobs:
 
     steps:
     - name: 1. 拉取 GitHub 程式庫檔案
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: 2. 設定 Python 3.10 環境
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
@@ -32,8 +32,9 @@ jobs:
         python auto_video.py
 
     - name: 6. 上傳生成好的成品 MP4 供下載
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: genesis-video-output
         path: "*.mp4"
+
 
