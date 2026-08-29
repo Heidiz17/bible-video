@@ -1,0 +1,38 @@
+name: GitHub Cloud Auto Video Generator
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-and-generate-video:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 1. 拉取 GitHub 程式庫檔案
+      uses: actions/checkout@v3
+
+    - name: 2. 設定 Python 3.10 環境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: 3. 安裝系統級影片處理工具 (FFmpeg)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+
+    - name: 4. 自動安裝 requirements.txt 依賴套件
+      run: |
+        pip install -r requirements.txt
+
+    - name: 5. 執行 Python 合成多圖慢推動畫影片
+      run: |
+        python auto_video.py
+
+    - name: 6. 上傳生成好的成品 MP4 供下載
+      uses: actions/upload-artifact@v3
+      with:
+        name: genesis-video-output
+        path: "*.mp4"

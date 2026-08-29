@@ -1,0 +1,4 @@
+edge-tts
+pydub
+Pillow
+moviepy
