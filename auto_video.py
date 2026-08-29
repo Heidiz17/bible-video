@@ -111,7 +111,6 @@ def mix_chapter_audio(text_file, output_audio_filename):
                 combined_voice += raw_voice + AudioSegment.silent(duration=1500)
                 seg_dur = len(raw_voice) + 1500
         
-        # 處理大自然音效 (SFX)
         seg_sfx = AudioSegment.silent(duration=seg_dur)
         if tag_sfx and tag_sfx in TAG_AUDIO_MAP:
             sfx_filename = TAG_AUDIO_MAP[tag_sfx]
@@ -121,7 +120,6 @@ def mix_chapter_audio(text_file, output_audio_filename):
                 seg_sfx = snd_looped.fade_in(500).fade_out(1000)
         combined_sfx += seg_sfx
         
-        # 處理背景音樂 (BGM)
         bgm_music_track = AudioSegment.silent(duration=seg_dur)
         music_filename = MUSIC_MAP.get(tag_bgm_type, 'music_calm.mp3')
         if music_filename and os.path.exists(music_filename):
@@ -131,7 +129,6 @@ def mix_chapter_audio(text_file, output_audio_filename):
             bgm_music_track = music_looped.fade_out(1500)
         combined_bgm += bgm_music_track
 
-    # 清理臨時音檔
     for t_file in created_temp_files:
         if os.path.exists(t_file):
             os.remove(t_file)
@@ -146,7 +143,7 @@ def mix_chapter_audio(text_file, output_audio_filename):
     return True
 
 def generate_multi_image_mp4(audio_file, video_output, text_file="video.txt"):
-    """讀取 video.txt 入面嘅 [IMG: ...]，自動做多圖慢推與淡入淡出動畫影片"""
+    """智能自動辨識 1.png 到 7.png 或 pic1.png 做動畫"""
     try:
         from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
 
@@ -157,26 +154,25 @@ def generate_multi_image_mp4(audio_file, video_output, text_file="video.txt"):
             content = f.read()
 
         img_tags = re.findall(r'\[IMG\s*:\s*(.*?)\]', content, re.IGNORECASE)
-        if not img_tags:
-            img_tags = ['1.png']
-
-        num_images = len(img_tags)
+        num_images = len(img_tags) if img_tags else 7
         dur_per_img = total_duration / num_images
 
         clips = []
         print(f"🎬 正在壓製多圖慢推動畫 MP4 (共 {num_images} 張相片)...")
-        for idx, img_name in enumerate(img_tags):
-            img_path = img_name.strip()
+        for idx in range(1, num_images + 1):
+            # 優先搜尋 1.png，找不到再找 pic1.png
+            img_path = f"{idx}.png"
             if not os.path.exists(img_path):
-                print(f"⚠️ 找不到圖片 {img_path}，嘗試使用 1.png 替代")
+                img_path = f"pic{idx}.png"
+            if not os.path.exists(img_path):
                 img_path = '1.png' if os.path.exists('1.png') else 'cover.png'
 
+            print(f"📸 第 {idx} 幕使用相片: {img_path}")
             img_clip = ImageClip(img_path).set_duration(dur_per_img)
-            # 慢推放大特效 (Ken Burns)
             img_clip = img_clip.resize(lambda t: 1 + 0.05 * (t / dur_per_img))
 
-            if idx > 0:
-                img_clip = img_clip.crossfadein(1.0) # 淡入轉場
+            if idx > 1:
+                img_clip = img_clip.crossfadein(1.0)
 
             clips.append(img_clip)
 
@@ -200,8 +196,6 @@ if __name__ == "__main__":
     output_video = "genesis_ch1_Pgirl.mp4"
 
     if os.path.exists(script_file):
-        # 1. 混音 (配音 + 大自然音效 + BGM)
         success = mix_chapter_audio(script_file, temp_audio)
-        # 2. 壓製多圖慢推 MP4 影片
         if success and os.path.exists(temp_audio):
             generate_multi_image_mp4(temp_audio, output_video, script_file)
