@@ -38,57 +38,62 @@ def download_chinese_font():
             print(f"⚠️ 字型下載失敗: {e}")
     return font_path if os.path.exists(font_path) else None
 
-def add_brand_and_subtitle(img_path, title_text, subtitle_text):
-    """左上角雙行黑底框（招牌+標題） + 底部真實廣東話台詞字幕"""
+def draw_frame(img_path, title_text, subtitle_phrase, zoom_factor=1.0):
+    """合成畫面：左上角雙行黑底框 + 底部保持省略號點點嘅動態字幕"""
     try:
         font_file = download_chinese_font()
         img = Image.open(img_path).convert("RGBA")
         width, height = img.size
 
-        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        # 慢推動畫縮放
+        if zoom_factor != 1.0:
+            new_w, new_h = int(width * zoom_factor), int(height * zoom_factor)
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            left = (new_w - width) // 2
+            top = (new_h - height) // 2
+            img = img.crop((left, top, left + width, top + height))
+
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw_overlay = ImageDraw.Draw(overlay)
         
         margin = int(height * 0.02)
         
-        # 1. 左上角雙行合併黑底框
+        # 1. 左上角雙行黑底框
         box_w = int(width * 0.32)
         box_h = int(height * 0.12)
         draw_overlay.rounded_rectangle([(margin, margin), (margin + box_w, margin + box_h)], radius=12, fill=(0, 0, 0, 170))
 
         # 2. 底部字幕黑透底條
-        if subtitle_text:
-            sub_h = int(height * 0.12)
+        if subtitle_phrase:
+            sub_h = int(height * 0.11)
             draw_overlay.rectangle([(0, height - sub_h), (width, height)], fill=(0, 0, 0, 185))
 
         img = Image.alpha_composite(img, overlay).convert("RGB")
         draw = ImageDraw.Draw(img)
 
-        # 字型設定
         font_brand = ImageFont.truetype(font_file, int(height * 0.032)) if font_file else ImageFont.load_default()
         font_title = ImageFont.truetype(font_file, int(height * 0.038)) if font_file else ImageFont.load_default()
         font_sub = ImageFont.truetype(font_file, int(height * 0.042)) if font_file else ImageFont.load_default()
 
-        # 繪製左上角雙行文字（置中對齊）
+        # 左上角雙行文字
         center_x = margin + (box_w / 2)
         draw.text((center_x, margin + (box_h * 0.28)), "★ 廣東話聖經劇場 ★", font=font_brand, fill=(255, 215, 0), anchor="mm")
         draw.text((center_x, margin + (box_h * 0.72)), title_text, font=font_title, fill=(255, 255, 255), anchor="mm")
             
-        # 繪製真實廣東話字幕
-        if subtitle_text:
-            clean_sub = re.sub(r'\[.*?\]', '', subtitle_text).strip()
-            # 太長自動截斷加省略號，確保不超出畫面
-            if len(clean_sub) > 30:
-                clean_sub = clean_sub[:28] + "……"
-            draw.text((width / 2, height - (int(height * 0.12) / 2)), clean_sub, font=font_sub, fill=(255, 255, 255), anchor="mm")
+        # 底部單句字幕（保留點點……）
+        if subtitle_phrase:
+            clean_sub = re.sub(r'\[.*?\]', '', subtitle_phrase).strip()
+            draw.text((width / 2, height - (int(height * 0.11) / 2)), clean_sub, font=font_sub, fill=(255, 255, 255), anchor="mm")
 
-        out_img = f"framed_{os.path.basename(img_path)}"
+        out_img = f"dyn_frame.png"
         img.save(out_img)
         return out_img
     except Exception as e:
-        print(f"⚠️ 標題字幕繪製失敗: {e}")
+        print(f"⚠️ 畫面繪製失敗: {e}")
         return img_path
 
 async def generate_tts(text, output_mp3):
+    """保持慢速朗讀 rate='-20%' 兼保留省略號停頓感"""
     clean_text = re.sub(r'\[.*?\]', '', text).strip()
     if not clean_text: return False
     for attempt in range(8):
@@ -148,7 +153,7 @@ def mix_chapter_audio(text_file, output_audio_filename):
     total_duration = len(combined_voice)
     if total_duration == 0: return False
 
-    # 1. 不間斷 BGM (最高權重)
+    # BGM 連續長播不間斷
     first_bgm_type = segment_durations[0][2] if segment_durations else 'calm'
     bgm_filename = MUSIC_MAP.get(first_bgm_type, 'music_calm.mp3')
     if os.path.exists(bgm_filename):
@@ -158,7 +163,7 @@ def mix_chapter_audio(text_file, output_audio_filename):
     else:
         combined_bgm = AudioSegment.silent(duration=total_duration)
 
-    # 2. SFX 大自然音效
+    # SFX 大自然音效
     combined_sfx = AudioSegment.silent(duration=0)
     for dur, sfx_tag, bgm_type in segment_durations:
         if dur > 0 and sfx_tag and sfx_tag in TAG_AUDIO_MAP and os.path.exists(TAG_AUDIO_MAP[sfx_tag]):
@@ -172,6 +177,7 @@ def mix_chapter_audio(text_file, output_audio_filename):
     return True
 
 def generate_multi_image_mp4(audio_file, video_output, text_file="video.txt"):
+    """保留省略號停頓語氣，畫面字幕隨語音順暢彈出"""
     try:
         try:
             from moviepy import AudioFileClip, ImageClip, concatenate_videoclips
@@ -180,56 +186,59 @@ def generate_multi_image_mp4(audio_file, video_output, text_file="video.txt"):
 
         audio_clip = AudioFileClip(audio_file)
         total_duration = audio_clip.duration
-
         title_text = "創世記 第一章"
 
         with open(text_file, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # 解析每一幕對應嘅文本台詞（作字幕用）
         img_blocks = re.split(r'\[IMG\s*:\s*.*?\]', content)
-        subtitles_list = []
-        for blk in img_blocks[1:]:
-            clean_lines = [re.sub(r'\[.*?\]', '', line).strip() for line in blk.split('\n') if line.strip()]
-            subtitles_list.append(" ".join(clean_lines))
-
         img_tags = re.findall(r'\[IMG\s*:\s*(.*?)\]', content, re.IGNORECASE)
         num_images = len(img_tags) if img_tags else 7
         dur_per_img = total_duration / num_images
 
-        clips = []
-        print(f"🎬 正在壓製【合併左上角框 + 廣東話字幕】影片...")
+        all_clips = []
+        print(f"🎬 正在壓製【保留慢讀停頓 + 廣東話動態字幕】影片...")
 
         for idx in range(1, num_images + 1):
             base_img = f"{idx}.png"
             if not os.path.exists(base_img): base_img = f"pic{idx}.png"
             if not os.path.exists(base_img): base_img = '1.png' if os.path.exists('1.png') else 'cover.png'
 
-            # 抓取該幕對應嘅台詞
-            sub_text = subtitles_list[idx-1] if (idx-1) < len(subtitles_list) else ""
+            blk_text = img_blocks[idx] if idx < len(img_blocks) else ""
+            clean_blk = re.sub(r'\[.*?\]', '', blk_text).strip()
+            
+            # 按換行/分號分拆字幕，但保留『……』在字幕內，絕不切碎語氣！
+            lines = [line.strip() for line in clean_blk.split('\n') if line.strip()]
+            phrases = []
+            for line in lines:
+                # 若單行太長，按標點智能分段，但保留省略號
+                sub_parts = re.split(r'(?<=……)\s*', line)
+                for sp in sub_parts:
+                    if sp.strip():
+                        phrases.append(sp.strip())
 
-            # 繪製：1.左上角雙行黑底框 + 2.正宗廣東話台詞字幕
-            framed_img = add_brand_and_subtitle(base_img, title_text, sub_text)
+            if not phrases:
+                phrases = [clean_blk] if clean_blk else ["創世記 第一章"]
 
-            try:
-                img_clip = ImageClip(framed_img).with_duration(dur_per_img)
-                img_clip = img_clip.resized(lambda t: 1 + 0.04 * (t / dur_per_img))
-            except AttributeError:
-                img_clip = ImageClip(framed_img).set_duration(dur_per_img)
-                img_clip = img_clip.resize(lambda t: 1 + 0.04 * (t / dur_per_img))
+            dur_per_phrase = dur_per_img / len(phrases)
 
-            if idx > 1:
-                try: img_clip = img_clip.crossfadein(1.0)
-                except Exception: pass
+            for p_idx, phrase in enumerate(phrases):
+                zoom_start = 1 + 0.04 * ((p_idx) / len(phrases))
+                frame_path = draw_frame(base_img, title_text, phrase, zoom_factor=zoom_start)
+                
+                try:
+                    sub_clip = ImageClip(frame_path).with_duration(dur_per_phrase)
+                except AttributeError:
+                    sub_clip = ImageClip(frame_path).set_duration(dur_per_phrase)
+                
+                all_clips.append(sub_clip)
 
-            clips.append(img_clip)
-
-        final_video = concatenate_videoclips(clips, method="compose")
+        final_video = concatenate_videoclips(all_clips, method="compose")
         try: final_video = final_video.with_audio(audio_clip)
         except AttributeError: final_video = final_video.set_audio(audio_clip)
 
         final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
-        print(f"✅ 成功生成精美廣東話字幕影片: {video_output}")
+        print(f"✅ 成功生成慢讀停頓感字幕影片: {video_output}")
 
         audio_clip.close()
         final_video.close()
