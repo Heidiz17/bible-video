@@ -31,8 +31,9 @@ jobs:
       run: |
         python auto_video.py
 
-    - name: 6. 上傳生成好的成品 MP4 供下載
-      uses: actions/upload-artifact@v3
+    - name: 6. 上傳生成好的成品 MP4 供下載 (升級至 v4 格式)
+      uses: actions/upload-artifact@v4
       with:
         name: genesis-video-output
         path: "*.mp4"
+
