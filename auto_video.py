@@ -156,7 +156,7 @@ def generate_genesis_chapter1(audio_file, video_output, scene_info):
         # 萬一冇對應嘅 mp4，用對應嘅靜態圖頂上
         img_path = f"{idx}.png"
         if not os.path.exists(img_path): img_path = "1.png"
-        scene_clips.append(ImageClip(img_path).set_duration(target_dur))
+        scene_clips.append(ImageClip(img_path).with_duration(target_dur))
 
     final_video = concatenate_videoclips(scene_clips, method="compose")
     try:
