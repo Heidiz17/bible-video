@@ -204,20 +204,17 @@ def process_script_and_audio(text_file, output_audio_filename):
 
 def generate_multi_image_mp4(audio_file, video_output, script_data):
     try:
-        # 💡 極致兼容性寫法：直接匯入獨立模組，不再依賴已淘汰的 moviepy.editor
-        from moviepy.audio.io.AudioFileClip import AudioFileClip
-        from moviepy.video.io.ImageClip import ImageClip
-        from moviepy.video.compositing.concatenate import concatenate_videoclips
+        # 💡 使用最傳統穩陣的 moviepy.editor 兼容所有 GitHub 環境
         try:
-            from moviepy.video.fx.fadeout import fadeout
+            from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
         except ImportError:
-            fadeout = None
+            from moviepy import AudioFileClip, ImageClip, concatenate_videoclips
 
         audio_clip = AudioFileClip(audio_file)
         title_text = "創世記 第一章"
         all_clips = []
         
-        print("🎬 正在壓製影片（相容最新 MoviePy 模組）...")
+        print("🎬 正在壓製影片（使用穩定兼容模式）...")
 
         for item in script_data:
             img_num = item['img_idx']
@@ -231,26 +228,31 @@ def generate_multi_image_mp4(audio_file, video_output, script_data):
             frame_path = draw_static_frame(base_img_path, title_text, phrase)
 
             try:
-                sub_clip = ImageClip(frame_path).with_duration(p_dur)
-            except AttributeError:
                 sub_clip = ImageClip(frame_path).set_duration(p_dur)
+            except AttributeError:
+                sub_clip = ImageClip(frame_path).with_duration(p_dur)
 
             all_clips.append(sub_clip)
 
         # 💡 片尾淡出處理
-        if all_clips and fadeout is not None:
+        if all_clips:
             last_clip = all_clips[-1]
             fade_duration = min(1.0, last_clip.duration)
             try:
-                last_clip = last_clip.fx(fadeout, fade_duration)
+                last_clip = last_clip.fadeout(fade_duration)
             except Exception:
-                pass
+                try:
+                    last_clip = last_clip.fx(lambda g: g.fadeout(fade_duration))
+                except Exception:
+                    pass
             all_clips[-1] = last_clip
 
         final_video = concatenate_videoclips(all_clips, method="compose")
 
-        try: final_video = final_video.with_audio(audio_clip)
-        except AttributeError: final_video = final_video.set_audio(audio_clip)
+        try:
+            final_video = final_video.set_audio(audio_clip)
+        except AttributeError:
+            final_video = final_video.with_audio(audio_clip)
 
         final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
         print(f"✅ 成功生成完美收尾影片: {video_output}")
