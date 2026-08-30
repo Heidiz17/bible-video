@@ -106,10 +106,9 @@ def process_script_and_audio(text_file, output_audio_filename):
     img_idx = 0
     combined_voice = AudioSegment.silent(duration=0)
     
-    print(f"🔊 正在以 +20% 語速 ({SPEECH_RATE}) 分析曉曼語音，並進行幕級無縫音效長播...")
+    print(f"🔊 正在以 +20% 語速 ({SPEECH_RATE}) 分析曉曼語音，並保持中間完美、僅對片尾做淡出...")
     created_temp_files = []
 
-    # 記錄每一幕 (Scene) 嘅音效標籤同總時間
     scene_sfx_info = []
 
     for section in raw_sections:
@@ -169,16 +168,17 @@ def process_script_and_audio(text_file, output_audio_filename):
     total_duration = len(combined_voice)
     if total_duration == 0: return False, []
 
-    # 1. BGM 全程無縫長播
+    # 1. BGM 全程無縫，僅在最後 1.5 秒做收尾淡出
     bgm_filename = MUSIC_MAP.get(current_bgm, 'music_calm.mp3')
     if os.path.exists(bgm_filename):
         raw_bgm = AudioSegment.from_file(bgm_filename)
         raw_bgm = raw_bgm.apply_gain(-22.0 - raw_bgm.dBFS)
         combined_bgm = (raw_bgm * (int(total_duration / len(raw_bgm)) + 2))[:total_duration]
+        combined_bgm = combined_bgm.fade_out(1500)
     else:
         combined_bgm = AudioSegment.silent(duration=total_duration)
 
-    # 2. 🎛️ 徹底根治：整幕音效（Scene SFX）一次過無縫連續拼接，絕不逐句裁切！
+    # 2. 整幕音效無縫連續，僅在最後 1.5 秒做收尾淡出
     combined_sfx = AudioSegment.silent(duration=0)
     for sc in scene_sfx_info:
         dur_ms = sc['total_dur_ms']
@@ -190,32 +190,32 @@ def process_script_and_audio(text_file, output_audio_filename):
                 sfx_file = TAG_AUDIO_MAP.get(tag)
                 if sfx_file and os.path.exists(sfx_file):
                     snd = AudioSegment.from_file(sfx_file) - 20
-                    # 直接鋪滿成個 Scene 嘅長度，中間絕不停頓、絕不重新觸發
                     loop_snd = (snd * (int(dur_ms / len(snd)) + 3))[:dur_ms]
                     scene_sfx_mix = scene_sfx_mix.overlay(loop_snd)
         
         combined_sfx += scene_sfx_mix
 
-    # 確保 SFX 總長度對齊
-    combined_sfx = combined_sfx[:total_duration]
+    combined_sfx = combined_sfx[:total_duration].fade_out(1500)
 
     final_mix = combined_bgm.overlay(combined_sfx).overlay(combined_voice, position=1000)
     final_mix.export(output_audio_filename, format="mp3")
-    print(f"🎉 徹底根治！整幕音效無縫連續長播版合成完成: {output_audio_filename}")
+    print(f"🎉 中間完美、僅片尾淡出混音完成: {output_audio_filename}")
     return True, script_data
 
 def generate_multi_image_mp4(audio_file, video_output, script_data):
     try:
         try:
             from moviepy import AudioFileClip, ImageClip, concatenate_videoclips
+            from moviepy.video.fx.fadeout import fadeout
         except ImportError:
             from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
+            from moviepy.video.fx.fadeout import fadeout
 
         audio_clip = AudioFileClip(audio_file)
         title_text = "創世記 第一章"
         all_clips = []
         
-        print("🎬 正在壓製影片...")
+        print("🎬 正在壓製影片（保持中間完美，僅對最後一幕做淡出）...")
 
         for item in script_data:
             img_num = item['img_idx']
@@ -235,12 +235,26 @@ def generate_multi_image_mp4(audio_file, video_output, script_data):
 
             all_clips.append(sub_clip)
 
+        # 💡 關鍵精準修改：只對最後一條 Clip (Last Clip) 套用 fadeout，中間所有鏡頭 100% 原汁原味保留！
+        if all_clips:
+            last_clip = all_clips[-1]
+            fade_duration = min(1.0, last_clip.duration) # 最多淡出 1 秒
+            try:
+                last_clip = last_clip.fx(fadeout, fade_duration)
+            except Exception:
+                try:
+                    last_clip = last_clip.fadeout(fade_duration)
+                except Exception:
+                    pass
+            all_clips[-1] = last_clip
+
         final_video = concatenate_videoclips(all_clips, method="compose")
+
         try: final_video = final_video.with_audio(audio_clip)
         except AttributeError: final_video = final_video.set_audio(audio_clip)
 
         final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
-        print(f"✅ 成功生成流暢版廣播劇影片: {video_output}")
+        print(f"✅ 成功生成完美收尾影片: {video_output}")
 
         audio_clip.close()
         final_video.close()
