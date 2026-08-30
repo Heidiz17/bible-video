@@ -36,9 +36,3 @@ jobs:
       with:
         name: genesis-video-output
         path: "*.mp4"
-        name: genesis-video-output
-        path: "*.mp4"
-
-
-
-
