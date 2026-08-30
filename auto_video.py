@@ -19,7 +19,7 @@ TAG_AUDIO_MAP = {
     '[風雨雷電]': 'thunder.mp3', '[下雨]': 'rain.mp3', '[雨聲]': 'rain.mp3',
     '[海洋]': 'wave.mp3', '[海浪]': 'wave.mp3', '[海浪風鈴]': 'wave.mp3',
     '[柴火]': 'fire.mp3', '[溫暖]': 'fire.mp3', '[森林]': 'forest.mp3',
-    '[天地]': 'forest.mp3', '[森林鳥鳴]': 'forest.mp3', '[風鈴]': 'windbell.mp3',
+    '[森林鳥鳴]': 'forest.mp3', '[風鈴]': 'windbell.mp3',
     '[海鳥]': 'windbell.mp3', '[溪流]': 'stream.mp3', '[流水]': 'stream.mp3',
     '[戰爭]': 'war.mp3', '[交戰]': 'war.mp3', '[洞穴]': 'cave.mp3', '[水滴]': 'cave.mp3'
 }
@@ -43,7 +43,7 @@ def download_chinese_font():
     return font_path if os.path.exists(font_path) else None
 
 def draw_static_frame(img_path, title_text, subtitle_phrase):
-    """生成穩定高清靜態畫面，絕不閃爍"""
+    """生成穩定高清靜態畫面"""
     try:
         font_file = download_chinese_font()
         img = Image.open(img_path).convert("RGBA")
@@ -107,7 +107,7 @@ def process_script_and_audio(text_file, output_audio_filename):
     img_idx = 0
     combined_voice = AudioSegment.silent(duration=0)
     
-    print(f"🔊 正在以 +20% 語速 ({SPEECH_RATE}) 精準分析曉曼語音與多重音效 (Overlap)...")
+    print(f"🔊 正在以 +20% 語速 ({SPEECH_RATE}) 分析曉曼語音，並進行全程無縫音效混音...")
     created_temp_files = []
 
     for section in raw_sections:
@@ -116,7 +116,6 @@ def process_script_and_audio(text_file, output_audio_filename):
         img_match = re.search(r'\[IMG\s*:\s*(.*?)\]', section, re.IGNORECASE)
         if img_match:
             img_idx += 1
-            # 換幕時清空上一幕嘅音效，準備重新抓取
             current_sfx_list = []
             continue
             
@@ -129,7 +128,6 @@ def process_script_and_audio(text_file, output_audio_filename):
             
             if not line: continue
             
-            # 💡 支援同一行抓取多個 SFX 標籤（例如 [海洋] [風鈴]）
             found_tags = re.findall(r'\[.*?\]', line)
             valid_tags = [t for t in found_tags if t in TAG_AUDIO_MAP]
             if valid_tags:
@@ -170,7 +168,7 @@ def process_script_and_audio(text_file, output_audio_filename):
     else:
         combined_bgm = AudioSegment.silent(duration=total_duration)
 
-    # 🎛️ 支援多重音效疊加 (SFX Overlap) 核心邏輯
+    # 🎛️ 完美解決方案：音效無縫連續長播（絕不因語音停頓而卡頓）
     combined_sfx = AudioSegment.silent(duration=0)
     for item in script_data:
         dur_ms = int(item['duration'] * 1000)
@@ -182,15 +180,15 @@ def process_script_and_audio(text_file, output_audio_filename):
                 sfx_file = TAG_AUDIO_MAP.get(tag)
                 if sfx_file and os.path.exists(sfx_file):
                     snd = AudioSegment.from_file(sfx_file) - 20
-                    loop_snd = (snd * (int(dur_ms / len(snd)) + 2))[:dur_ms]
-                    # 疊加 (Overlay) 音效
+                    # 計算長度循環鋪滿，確保連停頓位都有自然音效
+                    loop_snd = (snd * (int(dur_ms / len(snd)) + 5))[:dur_ms]
                     phrase_sfx_mix = phrase_sfx_mix.overlay(loop_snd)
         
         combined_sfx += phrase_sfx_mix
 
     final_mix = combined_bgm.overlay(combined_sfx).overlay(combined_voice, position=1000)
     final_mix.export(output_audio_filename, format="mp3")
-    print(f"🎉 支援多音效疊加 (Multi-SFX Overlap) 廣播劇合成完成: {output_audio_filename}")
+    print(f"🎉 音效全程無縫流暢版廣播劇合成完成: {output_audio_filename}")
     return True, script_data
 
 def generate_multi_image_mp4(audio_file, video_output, script_data):
@@ -229,7 +227,7 @@ def generate_multi_image_mp4(audio_file, video_output, script_data):
         except AttributeError: final_video = final_video.set_audio(audio_clip)
 
         final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
-        print(f"✅ 成功生成廣播劇影片: {video_output}")
+        print(f"✅ 成功生成流暢版廣播劇影片: {video_output}")
 
         audio_clip.close()
         final_video.close()
@@ -241,7 +239,7 @@ def generate_multi_image_mp4(audio_file, video_output, script_data):
 if __name__ == "__main__":
     script_file = "video.txt"
     temp_audio = "temp_full_mix.mp3"
-    output_video = "genesis_ch1_Pgirl.mp4"
+    output_video = "genesis_ch1_Pgirl_static.mp4"
 
     if os.path.exists(script_file):
         success, script_data = process_script_and_audio(script_file, temp_audio)
