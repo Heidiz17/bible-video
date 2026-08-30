@@ -11,8 +11,8 @@ from PIL import Image, ImageDraw, ImageFont
 # 曉曼粵語 Neural 語音
 VOICE = 'zh-HK-HiuMaanNeural'
 
-# ⚡ 語速控制：'+30%' 黃金節奏 (既有廣播劇質感，視覺又唔會覺得慢)
-SPEECH_RATE = '+30%'
+# ⚡ 語速控制：'+20%' 舒服自然黃金語速
+SPEECH_RATE = '+20%'
 
 TAG_AUDIO_MAP = {
     '[雷雨]': 'thunder.mp3', '[雷聲]': 'thunder.mp3', '[雨聲雷鳴]': 'thunder.mp3',
@@ -87,7 +87,6 @@ async def generate_tts(text, output_mp3):
     if not clean_text: return False
     for attempt in range(8):
         try:
-            # 採用 +30% 語速生成語音
             communicate = edge_tts.Communicate(clean_text, VOICE, rate=SPEECH_RATE)
             await communicate.save(output_mp3)
             if os.path.exists(output_mp3) and os.path.getsize(output_mp3) > 1000:
@@ -102,13 +101,13 @@ def process_script_and_audio(text_file, output_audio_filename):
 
     script_data = []
     current_bgm = 'calm'
-    first_sfx_tag = None
+    current_sfx_list = []
     
     raw_sections = re.split(r'(\[IMG\s*:\s*.*?\])', content)
     img_idx = 0
     combined_voice = AudioSegment.silent(duration=0)
     
-    print(f"🔊 正在以 +30% 語速 ({SPEECH_RATE}) 精準分析曉曼語音與停頓...")
+    print(f"🔊 正在以 +20% 語速 ({SPEECH_RATE}) 精準分析曉曼語音與多重音效 (Overlap)...")
     created_temp_files = []
 
     for section in raw_sections:
@@ -117,6 +116,8 @@ def process_script_and_audio(text_file, output_audio_filename):
         img_match = re.search(r'\[IMG\s*:\s*(.*?)\]', section, re.IGNORECASE)
         if img_match:
             img_idx += 1
+            # 換幕時清空上一幕嘅音效，準備重新抓取
+            current_sfx_list = []
             continue
             
         lines = [l.strip() for l in section.split('\n') if l.strip()]
@@ -128,9 +129,11 @@ def process_script_and_audio(text_file, output_audio_filename):
             
             if not line: continue
             
-            if line in TAG_AUDIO_MAP:
-                if not first_sfx_tag:
-                    first_sfx_tag = line
+            # 💡 支援同一行抓取多個 SFX 標籤（例如 [海洋] [風鈴]）
+            found_tags = re.findall(r'\[.*?\]', line)
+            valid_tags = [t for t in found_tags if t in TAG_AUDIO_MAP]
+            if valid_tags:
+                current_sfx_list = list(set(current_sfx_list + valid_tags))
                 continue
                 
             if re.match(r'\[TITLE\s*:', line, re.IGNORECASE): continue
@@ -143,13 +146,13 @@ def process_script_and_audio(text_file, output_audio_filename):
                 
                 if success and os.path.exists(temp_f):
                     raw_audio = AudioSegment.from_file(temp_f)
-                    # 適中停頓 (700ms)，保持氣氛又不拖沓
                     dur_ms = len(raw_audio) + 700
                     combined_voice += raw_audio + AudioSegment.silent(duration=700)
                     script_data.append({
                         'img_idx': max(img_idx, 1),
                         'phrase': p,
-                        'duration': dur_ms / 1000.0
+                        'duration': dur_ms / 1000.0,
+                        'sfx_list': list(current_sfx_list)
                     })
 
     for tf in created_temp_files:
@@ -158,7 +161,7 @@ def process_script_and_audio(text_file, output_audio_filename):
     total_duration = len(combined_voice)
     if total_duration == 0: return False, []
 
-    # BGM 連續長播
+    # BGM 全程長播
     bgm_filename = MUSIC_MAP.get(current_bgm, 'music_calm.mp3')
     if os.path.exists(bgm_filename):
         raw_bgm = AudioSegment.from_file(bgm_filename)
@@ -167,16 +170,27 @@ def process_script_and_audio(text_file, output_audio_filename):
     else:
         combined_bgm = AudioSegment.silent(duration=total_duration)
 
-    # SFX 大自然音效全程連續長播（絕不中斷）
-    if first_sfx_tag and first_sfx_tag in TAG_AUDIO_MAP and os.path.exists(TAG_AUDIO_MAP[first_sfx_tag]):
-        snd = AudioSegment.from_file(TAG_AUDIO_MAP[first_sfx_tag]) - 20
-        combined_sfx = (snd * (int(total_duration / len(snd)) + 2))[:total_duration]
-    else:
-        combined_sfx = AudioSegment.silent(duration=total_duration)
+    # 🎛️ 支援多重音效疊加 (SFX Overlap) 核心邏輯
+    combined_sfx = AudioSegment.silent(duration=0)
+    for item in script_data:
+        dur_ms = int(item['duration'] * 1000)
+        tags = item['sfx_list']
+        
+        phrase_sfx_mix = AudioSegment.silent(duration=dur_ms)
+        if tags:
+            for tag in tags:
+                sfx_file = TAG_AUDIO_MAP.get(tag)
+                if sfx_file and os.path.exists(sfx_file):
+                    snd = AudioSegment.from_file(sfx_file) - 20
+                    loop_snd = (snd * (int(dur_ms / len(snd)) + 2))[:dur_ms]
+                    # 疊加 (Overlay) 音效
+                    phrase_sfx_mix = phrase_sfx_mix.overlay(loop_snd)
+        
+        combined_sfx += phrase_sfx_mix
 
     final_mix = combined_bgm.overlay(combined_sfx).overlay(combined_voice, position=1000)
     final_mix.export(output_audio_filename, format="mp3")
-    print(f"🎉 +30% 語速廣播劇合成完成: {output_audio_filename}")
+    print(f"🎉 支援多音效疊加 (Multi-SFX Overlap) 廣播劇合成完成: {output_audio_filename}")
     return True, script_data
 
 def generate_multi_image_mp4(audio_file, video_output, script_data):
@@ -190,7 +204,7 @@ def generate_multi_image_mp4(audio_file, video_output, script_data):
         title_text = "創世記 第一章"
         all_clips = []
         
-        print("🎬 正在壓製 +30% 語速字幕精準對齊影片...")
+        print("🎬 正在壓製影片...")
 
         for item in script_data:
             img_num = item['img_idx']
@@ -215,7 +229,7 @@ def generate_multi_image_mp4(audio_file, video_output, script_data):
         except AttributeError: final_video = final_video.set_audio(audio_clip)
 
         final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
-        print(f"✅ 成功生成 +30% 語速廣播劇影片: {video_output}")
+        print(f"✅ 成功生成廣播劇影片: {video_output}")
 
         audio_clip.close()
         final_video.close()
