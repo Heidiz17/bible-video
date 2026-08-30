@@ -101,14 +101,16 @@ def process_script_and_audio(text_file, output_audio_filename):
 
     script_data = []
     current_bgm = 'calm'
-    current_sfx_list = []
     
     raw_sections = re.split(r'(\[IMG\s*:\s*.*?\])', content)
     img_idx = 0
     combined_voice = AudioSegment.silent(duration=0)
     
-    print(f"🔊 正在以 +20% 語速 ({SPEECH_RATE}) 分析曉曼語音，並進行全程無縫音效混音...")
+    print(f"🔊 正在以 +20% 語速 ({SPEECH_RATE}) 分析曉曼語音，並進行幕級無縫音效長播...")
     created_temp_files = []
+
+    # 記錄每一幕 (Scene) 嘅音效標籤同總時間
+    scene_sfx_info = []
 
     for section in raw_sections:
         if not section.strip(): continue
@@ -116,10 +118,12 @@ def process_script_and_audio(text_file, output_audio_filename):
         img_match = re.search(r'\[IMG\s*:\s*(.*?)\]', section, re.IGNORECASE)
         if img_match:
             img_idx += 1
-            current_sfx_list = []
             continue
             
         lines = [l.strip() for l in section.split('\n') if l.strip()]
+        current_sfx_list = []
+        scene_phrases = []
+
         for line in lines:
             bgm_m = re.search(r'\[BGM\s*:\s*(happy|calm|sad)\]', line, re.IGNORECASE)
             if bgm_m:
@@ -149,9 +153,15 @@ def process_script_and_audio(text_file, output_audio_filename):
                     script_data.append({
                         'img_idx': max(img_idx, 1),
                         'phrase': p,
-                        'duration': dur_ms / 1000.0,
-                        'sfx_list': list(current_sfx_list)
+                        'duration': dur_ms / 1000.0
                     })
+                    scene_phrases.append(dur_ms)
+
+        if scene_phrases:
+            scene_sfx_info.append({
+                'sfx_list': current_sfx_list,
+                'total_dur_ms': sum(scene_phrases)
+            })
 
     for tf in created_temp_files:
         if os.path.exists(tf): os.remove(tf)
@@ -159,7 +169,7 @@ def process_script_and_audio(text_file, output_audio_filename):
     total_duration = len(combined_voice)
     if total_duration == 0: return False, []
 
-    # BGM 全程長播
+    # 1. BGM 全程無縫長播
     bgm_filename = MUSIC_MAP.get(current_bgm, 'music_calm.mp3')
     if os.path.exists(bgm_filename):
         raw_bgm = AudioSegment.from_file(bgm_filename)
@@ -168,27 +178,30 @@ def process_script_and_audio(text_file, output_audio_filename):
     else:
         combined_bgm = AudioSegment.silent(duration=total_duration)
 
-    # 🎛️ 完美解決方案：音效無縫連續長播（絕不因語音停頓而卡頓）
+    # 2. 🎛️ 徹底根治：整幕音效（Scene SFX）一次過無縫連續拼接，絕不逐句裁切！
     combined_sfx = AudioSegment.silent(duration=0)
-    for item in script_data:
-        dur_ms = int(item['duration'] * 1000)
-        tags = item['sfx_list']
+    for sc in scene_sfx_info:
+        dur_ms = sc['total_dur_ms']
+        tags = sc['sfx_list']
         
-        phrase_sfx_mix = AudioSegment.silent(duration=dur_ms)
+        scene_sfx_mix = AudioSegment.silent(duration=dur_ms)
         if tags:
             for tag in tags:
                 sfx_file = TAG_AUDIO_MAP.get(tag)
                 if sfx_file and os.path.exists(sfx_file):
                     snd = AudioSegment.from_file(sfx_file) - 20
-                    # 計算長度循環鋪滿，確保連停頓位都有自然音效
-                    loop_snd = (snd * (int(dur_ms / len(snd)) + 5))[:dur_ms]
-                    phrase_sfx_mix = phrase_sfx_mix.overlay(loop_snd)
+                    # 直接鋪滿成個 Scene 嘅長度，中間絕不停頓、絕不重新觸發
+                    loop_snd = (snd * (int(dur_ms / len(snd)) + 3))[:dur_ms]
+                    scene_sfx_mix = scene_sfx_mix.overlay(loop_snd)
         
-        combined_sfx += phrase_sfx_mix
+        combined_sfx += scene_sfx_mix
+
+    # 確保 SFX 總長度對齊
+    combined_sfx = combined_sfx[:total_duration]
 
     final_mix = combined_bgm.overlay(combined_sfx).overlay(combined_voice, position=1000)
     final_mix.export(output_audio_filename, format="mp3")
-    print(f"🎉 音效全程無縫流暢版廣播劇合成完成: {output_audio_filename}")
+    print(f"🎉 徹底根治！整幕音效無縫連續長播版合成完成: {output_audio_filename}")
     return True, script_data
 
 def generate_multi_image_mp4(audio_file, video_output, script_data):
