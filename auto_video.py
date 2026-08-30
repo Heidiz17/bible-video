@@ -168,7 +168,7 @@ def process_script_and_audio(text_file, output_audio_filename):
     total_duration = len(combined_voice)
     if total_duration == 0: return False, []
 
-    # 1. BGM 全程無縫，僅在最後 1.5 秒做收尾淡出
+    # 1. BGM 全程無縫，僅在最後 1.5 秒做收尾淡出 (-22dB)
     bgm_filename = MUSIC_MAP.get(current_bgm, 'music_calm.mp3')
     if os.path.exists(bgm_filename):
         raw_bgm = AudioSegment.from_file(bgm_filename)
@@ -178,7 +178,7 @@ def process_script_and_audio(text_file, output_audio_filename):
     else:
         combined_bgm = AudioSegment.silent(duration=total_duration)
 
-    # 2. 整幕音效無縫連續，僅在最後 1.5 秒做收尾淡出
+    # 2. 整幕音效無縫連續，僅在最後 1.5 秒做收尾淡出 (-20dB)
     combined_sfx = AudioSegment.silent(duration=0)
     for sc in scene_sfx_info:
         dur_ms = sc['total_dur_ms']
@@ -204,18 +204,20 @@ def process_script_and_audio(text_file, output_audio_filename):
 
 def generate_multi_image_mp4(audio_file, video_output, script_data):
     try:
+        # 💡 極致兼容性寫法：直接匯入獨立模組，不再依賴已淘汰的 moviepy.editor
+        from moviepy.audio.io.AudioFileClip import AudioFileClip
+        from moviepy.video.io.ImageClip import ImageClip
+        from moviepy.video.compositing.concatenate import concatenate_videoclips
         try:
-            from moviepy import AudioFileClip, ImageClip, concatenate_videoclips
             from moviepy.video.fx.fadeout import fadeout
         except ImportError:
-            from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
-            from moviepy.video.fx.fadeout import fadeout
+            fadeout = None
 
         audio_clip = AudioFileClip(audio_file)
         title_text = "創世記 第一章"
         all_clips = []
         
-        print("🎬 正在壓製影片（保持中間完美，僅對最後一幕做淡出）...")
+        print("🎬 正在壓製影片（相容最新 MoviePy 模組）...")
 
         for item in script_data:
             img_num = item['img_idx']
@@ -235,17 +237,14 @@ def generate_multi_image_mp4(audio_file, video_output, script_data):
 
             all_clips.append(sub_clip)
 
-        # 💡 關鍵精準修改：只對最後一條 Clip (Last Clip) 套用 fadeout，中間所有鏡頭 100% 原汁原味保留！
-        if all_clips:
+        # 💡 片尾淡出處理
+        if all_clips and fadeout is not None:
             last_clip = all_clips[-1]
-            fade_duration = min(1.0, last_clip.duration) # 最多淡出 1 秒
+            fade_duration = min(1.0, last_clip.duration)
             try:
                 last_clip = last_clip.fx(fadeout, fade_duration)
             except Exception:
-                try:
-                    last_clip = last_clip.fadeout(fade_duration)
-                except Exception:
-                    pass
+                pass
             all_clips[-1] = last_clip
 
         final_video = concatenate_videoclips(all_clips, method="compose")
