@@ -224,7 +224,15 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
                     v_clip = VideoFileClip(v_path)
                     orig_dur = v_clip.duration
                     loop_times = int(p_dur / orig_dur) + 1
-                    extended_clip = concatenate_videoclips([v_clip] * loop_times).subclip(0, p_dur)
+                    
+                    # 兼容新舊版 MoviePy 的切片語法
+                    try:
+                        extended_clip = concatenate_videoclips([v_clip] * loop_times).subclip(0, p_dur)
+                    except AttributeError:
+                        try:
+                            extended_clip = concatenate_videoclips([v_clip] * loop_times).with_duration(p_dur)
+                        except AttributeError:
+                            extended_clip = concatenate_videoclips([v_clip] * loop_times).set_duration(p_dur)
                     
                     sub_clip = extended_clip.fl_image(lambda frame: import_pil_and_draw(frame, title_text, phrase))
                     try:
@@ -237,8 +245,9 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
                 except Exception as e:
                     print(f"⚠️ 動態 MP4 處理失敗，改用備用圖片: {e}")
 
+            # 萬一 MP4 讀取失敗，安全退守使用 1.png
             base_img_path = f"{img_num}.png"
-            if not os.path.exists(base_img_path): base_img_path = '1.png' if os.path.exists('1.png') else 'cover.png'
+            if not os.path.exists(base_img_path): base_img_path = '1.png'
             
             from PIL import Image
             pil_img = Image.open(base_img_path).convert("RGB")
