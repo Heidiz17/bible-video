@@ -2,7 +2,7 @@ name: GitHub Cloud Auto Video Generator
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, Mp4 ]
   workflow_dispatch:
 
 jobs:
@@ -35,7 +35,8 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: genesis-video-output
-        path: "*.mp4"
+        path: genesis_ch1_Pgirl_dynamic.mp4
+
 
 
 
