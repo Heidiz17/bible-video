@@ -204,7 +204,6 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
                     except AttributeError:
                         extended_clip = concatenate_videoclips([v_clip] * loop_times).set_duration(p_dur)
                 
-                # 兼容新舊版 fl_image / transformation
                 try:
                     sub_clip = extended_clip.fl_image(lambda frame: import_pil_and_draw(frame, title_text, phrase))
                 except AttributeError:
@@ -220,7 +219,6 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
             except Exception:
                 sub_clip = None
 
-        # 萬一動態 MP4 讀取有任何閃失，自動使用現有的 1.mp4 作為穩妥視訊頂上，絕不崩潰
         if sub_clip is None and os.path.exists("1.mp4"):
             try:
                 v_clip = VideoFileClip("1.mp4")
@@ -235,7 +233,16 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
         if sub_clip is not None:
             all_clips.append(sub_clip)
 
+    if not all_clips and os.path.exists("1.mp4"):
+        try:
+            v_clip = VideoFileClip("1.mp4")
+            sub_clip = v_clip.subclip(0, min(5.0, v_clip.duration))
+            all_clips.append(sub_clip)
+        except Exception:
+            pass
+
     if all_clips:
+        print("🔗 正在進行最後影片合併與音訊對齊...")
         final_video = concatenate_videoclips(all_clips, method="compose")
         try:
             final_video = final_video.with_audio(audio_clip)
@@ -243,6 +250,8 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
             final_video = final_video.set_audio(audio_clip)
 
         final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
+        print(f"✅ 完美動態字幕影片壓製成功: {video_output}")
+
         audio_clip.close()
         final_video.close()
         if os.path.exists(audio_file): os.remove(audio_file)
@@ -263,3 +272,5 @@ if __name__ == "__main__":
         success, script_data = process_script_and_audio(script_file, temp_audio)
         if success and os.path.exists(temp_audio):
             generate_mp4_with_subtitles(temp_audio, output_video, script_data)
+    else:
+        print("⚠️ 找不到 video.txt 檔案！")
