@@ -178,10 +178,11 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
     title_text = "創世記 第一章"
     all_frame_paths = []
     
-    print("🚀 正在啟動 MP4 動態背景技術突破：逐格渲染與字幕疊加...")
+    print("🚀 正在啟動 Pro 級 MP4 動態背景突破：統一畫質與字幕疊加...")
 
     frame_counter = 0
     fps = 24
+    TARGET_W, TARGET_H = 1280, 720  # 🌟 核心防護：設立全片統一標準尺寸
 
     for item in script_data:
         img_num = item['img_idx']
@@ -207,9 +208,19 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
                     frame_arr = v_clip.get_frame(t)
                     pil_img = Image.fromarray(frame_arr).convert("RGB")
                 except Exception:
-                    pil_img = Image.new("RGB", (1280, 720), (20, 20, 20))
+                    pil_img = Image.new("RGB", (TARGET_W, TARGET_H), (20, 20, 20))
             else:
-                pil_img = Image.new("RGB", (1280, 720), (20, 20, 20))
+                pil_img = Image.new("RGB", (TARGET_W, TARGET_H), (20, 20, 20))
+
+            # 🌟 統一尺寸防護網：強制將每一格縮放至 1280x720，絕不讓 MoviePy 報錯
+            if pil_img.size != (TARGET_W, TARGET_H):
+                try:
+                    pil_img = pil_img.resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
+                except AttributeError:
+                    try:
+                        pil_img = pil_img.resize((TARGET_W, TARGET_H), Image.LANCZOS)
+                    except AttributeError:
+                        pil_img = pil_img.resize((TARGET_W, TARGET_H))
 
             # 疊加招牌與即時字幕
             draw_img = draw_dynamic_video_frame(pil_img, title_text, phrase)
@@ -226,7 +237,7 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
                 pass
 
     if all_frame_paths:
-        print("🔗 正在將突破後的動態畫格與完美語音合成 MP4 大片...")
+        print("🔗 正在將突破後的統一動態畫格與完美語音合成 MP4 大片...")
         clip = ImageSequenceClip(all_frame_paths, fps=fps)
         
         try:
