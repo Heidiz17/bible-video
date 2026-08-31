@@ -8,7 +8,6 @@ import edge_tts
 from pydub import AudioSegment
 from PIL import Image, ImageDraw, ImageFont
 
-# 曉曼粵語 Neural 語音
 VOICE = 'zh-HK-HiuMaanNeural'
 SPEECH_RATE = '+20%'
 
@@ -171,97 +170,86 @@ def process_script_and_audio(text_file, output_audio_filename):
     return True, script_data
 def generate_mp4_with_subtitles(audio_file, video_output, script_data):
     try:
-        from moviepy.editor import AudioFileClip, VideoFileClip, ImageClip, concatenate_videoclips
+        from moviepy.editor import AudioFileClip, ImageSequenceClip, VideoFileClip
     except ImportError:
-        from moviepy import AudioFileClip, VideoFileClip, ImageClip, concatenate_videoclips
+        from moviepy import AudioFileClip, ImageSequenceClip, VideoFileClip
 
     audio_clip = AudioFileClip(audio_file)
     title_text = "創世記 第一章"
-    all_clips = []
+    all_frame_paths = []
     
-    print("🎬 正在結合 MP4 動態畫面、招牌與即時對應字幕...")
+    print("🚀 正在啟動 MP4 動態背景技術突破：逐格渲染與字幕疊加...")
+
+    frame_counter = 0
+    fps = 24
 
     for item in script_data:
         img_num = item['img_idx']
         phrase = item['phrase']
         p_dur = item['duration']
+        target_frames = int(p_dur * fps)
 
         v_path = f"{img_num}.mp4"
         if not os.path.exists(v_path): v_path = "1.mp4"
 
-        sub_clip = None
+        v_clip = None
         if os.path.exists(v_path):
             try:
                 v_clip = VideoFileClip(v_path)
-                orig_dur = v_clip.duration
-                loop_times = int(p_dur / orig_dur) + 1
-                
-                try:
-                    extended_clip = concatenate_videoclips([v_clip] * loop_times).subclip(0, p_dur)
-                except AttributeError:
-                    try:
-                        extended_clip = concatenate_videoclips([v_clip] * loop_times).with_duration(p_dur)
-                    except AttributeError:
-                        extended_clip = concatenate_videoclips([v_clip] * loop_times).set_duration(p_dur)
-                
-                try:
-                    sub_clip = extended_clip.fl_image(lambda frame: import_pil_and_draw(frame, title_text, phrase))
-                except AttributeError:
-                    try:
-                        sub_clip = extended_clip.transform(lambda frame: import_pil_and_draw(frame, title_text, phrase))
-                    except AttributeError:
-                        sub_clip = extended_clip
-
-                try:
-                    sub_clip = sub_clip.with_duration(p_dur)
-                except AttributeError:
-                    sub_clip = sub_clip.set_duration(p_dur)
             except Exception:
-                sub_clip = None
+                v_clip = None
 
-        if sub_clip is None and os.path.exists("1.mp4"):
-            try:
-                v_clip = VideoFileClip("1.mp4")
-                sub_clip = v_clip.subclip(0, min(p_dur, v_clip.duration))
+        for i in range(target_frames):
+            t = (i / fps) % (v_clip.duration if v_clip else 5.0)
+            
+            if v_clip:
                 try:
-                    sub_clip = sub_clip.with_duration(p_dur)
-                except AttributeError:
-                    sub_clip = sub_clip.set_duration(p_dur)
+                    frame_arr = v_clip.get_frame(t)
+                    pil_img = Image.fromarray(frame_arr).convert("RGB")
+                except Exception:
+                    pil_img = Image.new("RGB", (1280, 720), (20, 20, 20))
+            else:
+                pil_img = Image.new("RGB", (1280, 720), (20, 20, 20))
+
+            # 疊加招牌與即時字幕
+            draw_img = draw_dynamic_video_frame(pil_img, title_text, phrase)
+            
+            frame_path = f"frame_cache_{frame_counter:05d}.png"
+            draw_img.save(frame_path, "PNG")
+            all_frame_paths.append(frame_path)
+            frame_counter += 1
+
+        if v_clip:
+            try:
+                v_clip.close()
             except Exception:
                 pass
 
-        if sub_clip is not None:
-            all_clips.append(sub_clip)
-
-    if not all_clips and os.path.exists("1.mp4"):
+    if all_frame_paths:
+        print("🔗 正在將突破後的動態畫格與完美語音合成 MP4 大片...")
+        clip = ImageSequenceClip(all_frame_paths, fps=fps)
+        
         try:
-            v_clip = VideoFileClip("1.mp4")
-            sub_clip = v_clip.subclip(0, min(5.0, v_clip.duration))
-            all_clips.append(sub_clip)
-        except Exception:
-            pass
-
-    if all_clips:
-        print("🔗 正在進行最後影片合併與音訊對齊...")
-        final_video = concatenate_videoclips(all_clips, method="compose")
-        try:
-            final_video = final_video.with_audio(audio_clip)
+            clip = clip.with_audio(audio_clip)
         except AttributeError:
-            final_video = final_video.set_audio(audio_clip)
+            clip = clip.set_audio(audio_clip)
 
-        final_video.write_videofile(video_output, fps=24, codec='libx264', audio_codec='aac')
-        print(f"✅ 完美動態字幕影片壓製成功: {video_output}")
-
+        clip.write_videofile(video_output, fps=fps, codec='libx264', audio_codec='aac')
+        
         audio_clip.close()
-        final_video.close()
+        clip.close()
         if os.path.exists(audio_file): os.remove(audio_file)
 
-def import_pil_and_draw(frame, title_text, phrase):
-    import numpy as np
-    from PIL import Image
-    pil_img = Image.fromarray(np.uint8(frame))
-    draw_img = draw_dynamic_video_frame(pil_img, title_text, phrase)
-    return np.array(draw_img)
+        # 清理暫存畫格
+        print("🧹 正在清理暫存畫格快取...")
+        for fp in all_frame_paths:
+            if os.path.exists(fp):
+                try:
+                    os.remove(fp)
+                except Exception:
+                    pass
+
+        print(f"🎉 技術壁壘突破成功！完美動態 MP4 影片已生成: {video_output}")
 
 if __name__ == "__main__":
     script_file = "video.txt"
