@@ -178,43 +178,66 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
     title_text = "創世記 第一章"
     all_frame_paths = []
     
-    print("🚀 正在啟動 Pro 級連續動態背景：無縫連接畫質與字幕疊加...")
+    print("🚀 正在啟動 終極橡筋慢速拉長技術：場景無縫映射...")
 
     frame_counter = 0
     fps = 24
     TARGET_W, TARGET_H = 1280, 720  # 統一標準尺寸
 
-    current_img_idx = -1
-    scene_time = 0.0  # 🌟 核心升級：紀錄當前場景已經播放咗幾耐（連續時間軸）
+    # 1. 預先計算每一個場景（img_idx）總共包含多少秒的語音
+    scene_durations = {}
+    for item in script_data:
+        img_num = item['img_idx']
+        scene_durations[img_num] = scene_durations.get(img_num, 0.0) + item['duration']
 
+    # 2. 記錄每一個場景已經推進了多少秒
+    scene_elapsed = {}
+
+    # 3. 預先載入所有用到的 MP4 影片物件並獲取其總長度
+    video_clips = {}
+    unique_img_indices = set(item['img_idx'] for item in script_data)
+    for img_num in unique_img_indices:
+        v_path = f"{img_num}.mp4"
+        if not os.path.exists(v_path):
+            v_path = "1.mp4"
+        
+        if os.path.exists(v_path):
+            try:
+                v_clip = VideoFileClip(v_path)
+                video_clips[img_num] = {
+                    'clip': v_clip,
+                    'duration': v_clip.duration if v_clip.duration > 0 else 5.0
+                }
+            except Exception:
+                pass
+
+    # 4. 逐句對白精準渲染畫面
     for item in script_data:
         img_num = item['img_idx']
         phrase = item['phrase']
         p_dur = item['duration']
         target_frames = int(p_dur * fps)
 
-        # 如果換咗新場景 (例如 1.png 轉 2.png)，時間軸歸零重頭播放
-        if img_num != current_img_idx:
-            current_img_idx = img_num
-            scene_time = 0.0
+        scene_total_dur = scene_durations.get(img_num, 1.0)
+        
+        if img_num not in scene_elapsed:
+            scene_elapsed[img_num] = 0.0
 
-        v_path = f"{img_num}.mp4"
-        if not os.path.exists(v_path): v_path = "1.mp4"
-
-        v_clip = None
-        if os.path.exists(v_path):
-            try:
-                v_clip = VideoFileClip(v_path)
-            except Exception:
-                v_clip = None
+        v_info = video_clips.get(img_num)
+        v_clip = v_info['clip'] if v_info else None
+        orig_dur = v_info['duration'] if v_info else 5.0
 
         for i in range(target_frames):
-            # 🌟 連貫計算時間：加上 scene_time，令影片唔會每句說話都由 0 秒開始！
-            current_t = scene_time + (i / fps)
+            # 當前句子在整個大場景中的絕對時間進度
+            current_phrase_local_t = scene_elapsed[img_num] + (i / fps)
             
             if v_clip:
-                # 當連續時間超過影片原本長度時，自動平滑循環播放 (Loop)
-                vid_t = current_t % (v_clip.duration if v_clip.duration > 0 else 5.0)
+                # 🌟 核心橡筋公式：將大場景的進度完美對應到原片的 0 到 orig_dur 之間，平滑慢速播完！
+                progress_ratio = current_phrase_local_t / scene_total_dur
+                progress_ratio = max(0.0, min(1.0, progress_ratio))
+                vid_t = progress_ratio * orig_dur
+                vid_t = min(vid_t, orig_dur - 0.001)
+
                 try:
                     frame_arr = v_clip.get_frame(vid_t)
                     pil_img = Image.fromarray(frame_arr).convert("RGB")
@@ -241,17 +264,18 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
             all_frame_paths.append(frame_path)
             frame_counter += 1
 
-        if v_clip:
-            try:
-                v_clip.close()
-            except Exception:
-                pass
-        
-        # 🌟 一句說話播完，將時間累積落去，等下一句說話可以接著播，唔會重新跳回開頭！
-        scene_time += p_dur
+        # 更新該場景已消耗的時間
+        scene_elapsed[img_num] += p_dur
+
+    # 關閉所有影片物件以釋放資源
+    for v_info in video_clips.values():
+        try:
+            v_info['clip'].close()
+        except Exception:
+            pass
 
     if all_frame_paths:
-        print("🔗 正在將連續的動態畫格與完美語音合成 MP4 大片...")
+        print("🔗 正在將橡筋拉長後的平滑畫格與完美語音合成 MP4 大片...")
         clip = ImageSequenceClip(all_frame_paths, fps=fps)
         
         try:
@@ -274,7 +298,7 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
                 except Exception:
                     pass
 
-        print(f"🎉 技術壁壘終極突破！連續不跳格的完美 MP4 影片已生成: {video_output}")
+        print(f"🎉 橡筋拉長技術大功告成！完美不跳格的影片已生成: {video_output}")
 
 if __name__ == "__main__":
     script_file = "video.txt"
