@@ -178,17 +178,25 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
     title_text = "創世記 第一章"
     all_frame_paths = []
     
-    print("🚀 正在啟動 Pro 級 MP4 動態背景突破：統一畫質與字幕疊加...")
+    print("🚀 正在啟動 Pro 級連續動態背景：無縫連接畫質與字幕疊加...")
 
     frame_counter = 0
     fps = 24
-    TARGET_W, TARGET_H = 1280, 720  # 🌟 核心防護：設立全片統一標準尺寸
+    TARGET_W, TARGET_H = 1280, 720  # 統一標準尺寸
+
+    current_img_idx = -1
+    scene_time = 0.0  # 🌟 核心升級：紀錄當前場景已經播放咗幾耐（連續時間軸）
 
     for item in script_data:
         img_num = item['img_idx']
         phrase = item['phrase']
         p_dur = item['duration']
         target_frames = int(p_dur * fps)
+
+        # 如果換咗新場景 (例如 1.png 轉 2.png)，時間軸歸零重頭播放
+        if img_num != current_img_idx:
+            current_img_idx = img_num
+            scene_time = 0.0
 
         v_path = f"{img_num}.mp4"
         if not os.path.exists(v_path): v_path = "1.mp4"
@@ -201,18 +209,21 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
                 v_clip = None
 
         for i in range(target_frames):
-            t = (i / fps) % (v_clip.duration if v_clip else 5.0)
+            # 🌟 連貫計算時間：加上 scene_time，令影片唔會每句說話都由 0 秒開始！
+            current_t = scene_time + (i / fps)
             
             if v_clip:
+                # 當連續時間超過影片原本長度時，自動平滑循環播放 (Loop)
+                vid_t = current_t % (v_clip.duration if v_clip.duration > 0 else 5.0)
                 try:
-                    frame_arr = v_clip.get_frame(t)
+                    frame_arr = v_clip.get_frame(vid_t)
                     pil_img = Image.fromarray(frame_arr).convert("RGB")
                 except Exception:
                     pil_img = Image.new("RGB", (TARGET_W, TARGET_H), (20, 20, 20))
             else:
                 pil_img = Image.new("RGB", (TARGET_W, TARGET_H), (20, 20, 20))
 
-            # 🌟 統一尺寸防護網：強制將每一格縮放至 1280x720，絕不讓 MoviePy 報錯
+            # 統一尺寸防護網
             if pil_img.size != (TARGET_W, TARGET_H):
                 try:
                     pil_img = pil_img.resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
@@ -235,9 +246,12 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
                 v_clip.close()
             except Exception:
                 pass
+        
+        # 🌟 一句說話播完，將時間累積落去，等下一句說話可以接著播，唔會重新跳回開頭！
+        scene_time += p_dur
 
     if all_frame_paths:
-        print("🔗 正在將突破後的統一動態畫格與完美語音合成 MP4 大片...")
+        print("🔗 正在將連續的動態畫格與完美語音合成 MP4 大片...")
         clip = ImageSequenceClip(all_frame_paths, fps=fps)
         
         try:
@@ -260,7 +274,7 @@ def generate_mp4_with_subtitles(audio_file, video_output, script_data):
                 except Exception:
                     pass
 
-        print(f"🎉 技術壁壘突破成功！完美動態 MP4 影片已生成: {video_output}")
+        print(f"🎉 技術壁壘終極突破！連續不跳格的完美 MP4 影片已生成: {video_output}")
 
 if __name__ == "__main__":
     script_file = "video.txt"
